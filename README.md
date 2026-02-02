@@ -253,7 +253,6 @@ reasoning-lens/
 ├── static/                  # Static assets
 ├── Dockerfile               # Production Docker build
 ├── docker-compose.dev.yaml  # Development compose file
-└── docker-compose.yaml      # Production compose file
 ```
 
 ### Tech Stack

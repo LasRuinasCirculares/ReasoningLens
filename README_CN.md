@@ -253,7 +253,6 @@ reasoning-lens/
 ├── static/                  # 静态资源
 ├── Dockerfile               # 生产环境 Docker 构建文件
 ├── docker-compose.dev.yaml  # 开发环境 compose 文件
-└── docker-compose.yaml      # 生产环境 compose 文件
 ```
 
 ### 技术栈
