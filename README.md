@@ -29,7 +29,7 @@ When a model produces a massive reasoning trace, the "critical" logic often gets
 
 ## 💡 Introducing ReasoningLens
 
-Built on top of **[Open WebUI](https://github.com/open-webui/open-webui.git)**, ReasoningLens is a developer-centric toolkit designed to help the open-source community **visualize, understand, and debug** modern reasoning chains without losing their minds.
+Built on top of **[Open WebUI](https://github.com/open-webui/open-webui.git)**, ReasoningLens is a developer-centric toolkit designed to help the open-source community **visualize, understand, and debug** model reasoning chains without losing their minds.
 
 > **"ReasoningLens doesn't just show you what the model said; it shows you *how* the model thinks."**
 

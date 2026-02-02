@@ -30,7 +30,7 @@ https://github.com/user-attachments/assets/f85a110f-d800-4a70-9f50-ffb16552987f
 
 ## 💡 ReasoningLens 简介
 
-基于 **[Open WebUI](https://github.com/open-webui/open-webui.git)** 构建，ReasoningLens 是一个面向开发者的工具包，旨在帮助开源社区**可视化、理解和调试**现代推理链，而不会让人抓狂。
+基于 **[Open WebUI](https://github.com/open-webui/open-webui.git)** 构建，ReasoningLens 是一个面向开发者的工具包，旨在帮助开源社区**可视化、理解和调试**模型推理链，而不会让人抓狂。
 
 > **「ReasoningLens 不仅展示模型说了什么，更展示模型*如何思考*。」**
 
