@@ -1,0 +1,56 @@
+# config.yaml
+models:
+  reasoning_model:
+    provider: "openai"  # 或 openai
+    model: "google/gemini-2.5-pro"
+    base_url: "https://openrouter.ai/api/v1"
+    api_key: "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"
+    temperature: 1.0
+    max_tokens: 30000
+    
+  analysis_model:
+    provider: "openai"
+    model: "google/gemini-2.5-pro"
+    base_url: "https://openrouter.ai/api/v1"
+    api_key: "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"
+    temperature: 0.3
+    max_tokens: 30000
+    decomposition_prompt_template: |
+      You are a reasoning-chain analyst. Decompose the long chain-of-thought into ordered atomic units based on key transitions such as planning, reasoning, backtracking, self-validation, and reflection. Preserve branching and backtracking links.
+    error_prompt_template: |
+      For each atomic unit, run error checks using these categories (set hasError=true and explain in errorDescription when applicable):
+      - Ruminate: stuck in loops or repetitive thinking.
+      - Ineffective Reflection: reflection is flawed or unhelpful.
+      - Incoherent Content: disjointed or non-continuous text / poor instruction following.
+      - Format Error: output violates expected format or is incomplete.
+      - Knowledge Errors: incorrect facts/definitions/theorems.
+      - Logical Error: wrong strategy, invalid premises, incoherent or contradictory reasoning.
+      - Formal Manipulation Error: rule violations in math/code/logic/physics computations.
+      - Faithfulness Issue: conflicts with user-provided info; reasoning not aligned.
+      - Safety Issue: harmful/unsafe/discriminatory content or missing mitigation.
+      
+      Output JSON only:
+      {
+        "nodes": [
+          {
+            "id": 1,
+            "label": "Short label",
+            "content": "Full content of this atomic unit",
+            "hasError": false,
+            "errorDescription": null,
+            "dependencies": [ids of prerequisites],
+            "substeps": [
+              {"text": "Substep 1", "is_error": false, "note": "optional"},
+              {"text": "Substep 2", "is_error": true, "note": "why it is wrong"}
+            ]
+          }
+        ],
+        "edges": [
+          {"from": 1, "to": 2, "type": "normal"},
+          {"from": 3, "to": 2, "type": "backtrack"}
+        ]
+      }
+
+server:
+  port: 8000
+  cors_origins: ["http://localhost:3000", "http://localhost:5173"]

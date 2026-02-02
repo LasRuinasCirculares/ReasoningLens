@@ -1,0 +1,73 @@
+services:
+  # Backend development service
+  backend:
+    image: docker.m.daocloud.io/library/python:3.11-slim-bookworm
+    container_name: reasoning-lens-backend
+    working_dir: /app/backend
+    command: >
+      bash -c "pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ &&
+               pip install -r requirements.txt &&
+               bash dev.sh"
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount backend code, supports hot reload
+      - ./backend:/app/backend
+      # Mount CHANGELOG.md (backend needs to read)
+      - ./CHANGELOG.md:/app/CHANGELOG.md:ro
+      # Mount static files
+      - ./static/favicon.png:/app/backend/open_webui/static/favicon.png:ro
+      - ./static/favicon-dark.png:/app/backend/open_webui/static/favicon-dark.png:ro
+      - ./static/splash.png:/app/backend/open_webui/static/splash.png:ro
+      - ./static/splash-dark.png:/app/backend/open_webui/static/splash-dark.png:ro
+      - ./static/logo.png:/app/backend/open_webui/static/logo.png:ro
+      - ./static/user.png:/app/backend/open_webui/static/user.png:ro
+      # Persistent data
+      - reasoning-lens-data:/app/backend/data
+      # Cache pip packages
+      - pip-cache:/root/.cache/pip
+    environment:
+      - CORS_ALLOW_ORIGIN=http://localhost:5173;http://localhost:8080;http://localhost:3111;http://192.168.14.73:5173;http://192.168.14.73:8080;http://192.168.14.73:3111
+      - REASONING_ANALYSIS_LOGS=1
+      - ENABLE_PERSISTENT_CONFIG=False
+      - OPENAI_API_KEY=sk-LYWrR2EtydXV2gPcZAxEd71yEMD8MzCdonD8jpY757jt5cwu
+      - OPENAI_API_BASE_URL=http://api.cipsup.cn/v1
+      - DEFAULT_USER_ROLE=user
+      - WEBUI_SECRET_KEY=sk-LYWrR2EtydXV2gPcZAxEd71yEMD8MzCdonD8jpY757jt5cwu
+      - HF_ENDPOINT=https://hf-mirror.com
+    restart: unless-stopped
+    networks:
+      - dev-network
+
+  # Frontend development service
+  frontend:
+    # Use China mirror source
+    image: docker.m.daocloud.io/library/node:22-alpine
+    container_name: reasoning-lens-frontend
+    working_dir: /app
+    command: sh -c "npm config set registry https://registry.npmmirror.com && npm install && npm run dev"
+    ports:
+      - "5173:5173"
+    volumes:
+      # Mount entire project (frontend needs)
+      - ./:/app
+      # Use named volume to cache node_modules, improve performance
+      - node_modules:/app/node_modules
+    environment:
+      - NODE_ENV=development
+      - VITE_API_BASE_URL=http://192.168.14.73:8080
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - dev-network
+
+volumes:
+  reasoning-lens-data:
+    external: true  # Use the volume you already created
+  node_modules:
+  pip-cache:
+
+networks:
+  dev-network:
+    driver: bridge

@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you find ReasoningLens useful in your research, please consider citing it."
+title: "ReasoningLens"
+type: software
+
+authors:
+  - family-names: "Zhang"
+    given-names: "Jun"
+  - family-names: "Zheng"
+    given-names: "Jiasheng"
+  - family-names: "Lu"
+    given-names: "Yaojie"
+  - family-names: "Cao"
+    given-names: "Boxi"
+
+repository-code: "https://github.com/LasRuinasCirculares/ReasoningLens"
+url: "https://github.com/LasRuinasCirculares/ReasoningLens"
+
+license: "MIT"
+
+version: "0.1.0"
+
+date-released: "2026-02-02"
