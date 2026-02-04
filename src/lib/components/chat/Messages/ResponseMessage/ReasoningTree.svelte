@@ -363,20 +363,6 @@
 		return currentSolutions.training_methods;
 	};
 
-	// Get difficulty color
-	const getDifficultyColor = (difficulty: string): string => {
-		switch (difficulty) {
-			case 'beginner':
-				return '#22c55e';
-			case 'intermediate':
-				return '#f59e0b';
-			case 'advanced':
-				return '#ef4444';
-			default:
-				return '#6b7280';
-		}
-	};
-
 	const buildIssueKey = (issue: IssueEntry) => {
 		const norm = (v: string | undefined | null) => `${v ?? ''}`.trim().toLowerCase();
 		return [
@@ -2392,14 +2378,6 @@
 																	>
 																		{method.name}
 																	</span>
-																	<span
-																		class="px-1 py-0.5 rounded text-[9px] font-medium"
-																		style="background-color: {getDifficultyColor(
-																			method.difficulty
-																		)}20; color: {getDifficultyColor(method.difficulty)};"
-																	>
-																		{method.difficulty}
-																	</span>
 																</div>
 																{#if method.full_name && method.full_name !== method.name}
 																	<div class="text-[10px] text-emerald-600 dark:text-emerald-400">
@@ -2515,14 +2493,6 @@
 																		class="text-xs font-semibold text-purple-800 dark:text-purple-200"
 																	>
 																		{method.name}
-																	</span>
-																	<span
-																		class="px-1 py-0.5 rounded text-[9px] font-medium"
-																		style="background-color: {getDifficultyColor(
-																			method.difficulty
-																		)}20; color: {getDifficultyColor(method.difficulty)};"
-																	>
-																		{method.difficulty}
 																	</span>
 																</div>
 																{#if method.full_name && method.full_name !== method.name}
