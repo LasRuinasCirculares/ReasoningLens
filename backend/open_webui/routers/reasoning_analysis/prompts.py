@@ -114,226 +114,204 @@ def get_prompts(language: str = "en") -> Tuple[str, str, str, str]:
 # ============================================================================
 
 LAYER1_SYSTEM_PROMPT_EN = (
-    "You are a reasoning structure analysis expert. Your task is to analyze a chain-of-thought "
-    "reasoning process and decompose it into a structured tree graph of nodes and edges. "
-    "The reasoning text has been pre-split into numbered sections. You must specify which sections each node covers. "
-    "Use FIVE node types: 'problem_decomposition', 'reasoning_step', 'check', 'intermediate_answer', 'final_answer'. "
-    "Use only THREE edge types: 'reasoning' (normal flow), 'check' (verification pointing to checked node), "
-    "and 'backtracking' (failed path pointing to alternative path). "
-    "Return ONLY valid JSON without any markdown formatting or code blocks."
+    "You are a reasoning structure annotator. "
+    "Your task is to analyze a chain-of-thought reasoning process and convert it into a coarse-grained graph. "
+    "The reasoning text has already been split into numbered sections, and you must specify which sections each node covers. "
+    "Use exactly FIVE node types: 'problem_decomposition', 'reasoning_step', 'check', 'intermediate_answer', 'final_answer'. "
+    "Use exactly THREE edge types: 'reasoning', 'check', and 'backtracking'. "
+    "Return JSON only. Do not output markdown, commentary, or code fences."
 )
 
 LAYER1_USER_PROMPT_TEMPLATE_EN = """
-You are analyzing a chain-of-thought reasoning process. Decompose it into a **COARSE-GRAINED** tree graph capturing the **high-level reasoning flow**.
+Your goal is to read the sectioned reasoning trace, identify its high-level reasoning structure, and output a coarse-grained graph in JSON format. Focus on the actual organization of the reasoning rather than surface repetition or line-by-line details.
 
-## Core Principle: Macro-Level Analysis
+The input has already been split into numbered sections `[Section 1]`, `[Section 2]`, etc.
 
-Each node = ONE complete logical unit (coherent reasoning intent):
-- Full problem decomposition phase
-- Complete reasoning approach (NOT individual steps)
-- Entire verification process
-- Complete strategy change
+## Node Type Definitions
 
-**Target**: 3-8 nodes for typical reasoning. Only use more for very long/complex chains.
+Use exactly these five node types:
 
-## Section Mapping Rules
+1. `problem_decomposition`
+   - Initial understanding of the problem
+   - Breaking the task into subgoals
+   - Setting up a plan or framing the target
 
-Reasoning text = numbered sections [Section 1], [Section 2], etc.
+2. `reasoning_step`
+   - A main reasoning move
+   - Derivation, case analysis, search, comparison, weighing factors, or other substantive step that advances the solution
 
-**CRITICAL CONSTRAINTS**:
-- Each node: `section_start` to `section_end` (inclusive, 1-indexed)
-- **⚠️ ABSOLUTELY NO OVERLAP**: Each section number can ONLY appear in ONE node
-  - ❌ WRONG: node1=[1,3], node2=[3,5] (section 3 appears in both)
-  - ✅ CORRECT: node1=[1,3], node2=[4,6] (no overlap)
-- NO GAPS: Must cover ALL sections [1, {SECTION_COUNT}] consecutively
-- Each range = one complete logical unit
-- Sections must be assigned in ascending order without any reuse
+3. `check`
+   - A distinct verification action
+   - Rechecking a result, substituting back, validating a candidate, or testing whether a previous step is correct
+   - Metadata must include `validates_node`
 
-## Graph Elements
+4. `intermediate_answer`
+   - An explicit candidate answer to the original question that appears before the reasoning has finished
+   - Use this only when the trace states a concrete provisional answer, answer set, or competing candidate answer to the main question and then continues to check it, compare it, revise it, or reason further
+   - Do NOT use this for temporary calculations, local scores, partial summaries, feasibility checks, or transition sentences
+   - Metadata must include `from_node` and `answer_value`
 
-### Node Types (5 types)
+5. `final_answer`
+   - The final concrete answer to the original question
+   - Use this for the terminal answer statement, not for a generic summary
+   - There must be exactly one `final_answer` node
+   - Metadata must include `from_node` and `answer_value`
 
-| Type | Use Case | Required Metadata |
-|------|----------|-------------------|
-| `problem_decomposition` | Initial problem analysis | - |
-| `reasoning_step` | Main reasoning approach | `approach` (optional) |
-| `check` | Verification/validation of a result | `validates_node` (ID of the validated node: reasoning_step/intermediate_answer/final_answer) |
-| `intermediate_answer` | Partial conclusion/result | `from_node` |
-| `final_answer` | Ultimate conclusion | `from_node`, `answer_value` |
+## Edge Type Definitions
 
-### Edge Types (3 types ONLY)
+Use exactly these three edge types:
 
-1. **`reasoning`** (solid →): Forward flow A→B
-2. **`check`** (dashed →): Verification FROM validation node TO validated node
-   - **Validated nodes can be**: `reasoning_step`, `intermediate_answer`, or `final_answer`
-   - **Validation node has ONLY ONE outgoing edge**: the `check` edge pointing to validated node
-   - **No incoming edges to validation node**: it's a side-branch, not part of the main reasoning flow
-   - Reasoning flow continues from the validated node, NOT from the validation node
-3. **`backtracking`** (dotted →): Failed path to alternative
-   - Needs: failed→alternative AND problem→alternative
+1. `reasoning`
+   - Normal forward reasoning flow from one node to the next.
+   - Use this for ordinary progression where one step leads to another.
 
-**Every node MUST connect via ≥1 edge (except validation nodes which only have outgoing check edge).**
+   Example:
+   `[Problem setup] --reasoning--> [Main derivation] --reasoning--> [Intermediate answer]`
 
-## Segmentation Strategy: Answer-Driven Approach
+2. `check`
+   - A verification edge FROM the checking node TO the checked node.
+   - Use this when a node verifies, substitutes back, validates, or tests a
+     previous reasoning step or answer.
+   - The edge direction must be:
+     `[Check node] --check--> [Checked node]`
 
-Scan the reasoning chain to identify ALL answer expressions that directly respond to the question.
+   Example:
+   ```
+   [Reasoning] --reasoning--> [Answer: x = 5] --reasoning--> [Final confirmation]
+                                ^
+                                |
+                    [Check: substitute x = 5 back]
+   ```
+   In this example, the check edge is:
+   `[Check: substitute x = 5 back] --check--> [Answer: x = 5]`
 
-### Step 1: Identify Answer Expressions
+3. `backtracking`
+   - Backtracking is a failure-triggered reasoning behavior invoked when the
+     current strategy cannot produce a feasible solution.
+   - It prunes the failed branch and resumes search from a prior decision point
+     to explore alternatives.
+   - Use this when the trace abandons a failed approach, interpretation, or
+     intermediate result and opens a new alternative branch.
+   - Prefer attaching the `backtracking` edge FROM the failed node itself
+     (usually a wrong `reasoning_step` or wrong `intermediate_answer`) TO the
+     new alternative `reasoning_step`.
+   - The earlier pivot node should also connect to the alternative branch with a
+     normal `reasoning` edge, so the two paths are represented as parallel
+     branches rather than a single linear rewrite.
 
-Look for phrases that provide answers to the question:
+   Example:
+   ```
+   [Pivot] --reasoning--> [Approach A] --reasoning--> [Wrong result]
+      |
+      |--reasoning----------------------------------> [Approach B] --reasoning--> [Correct answer]
 
-**Answer signals** (strong node boundaries):
-- "the answer is", "therefore", "so the answer is", \\boxed{{...}}
-- "I conclude that", "this gives us", "hence", "thus"
-- "we get", "the result is", "equals", "="
-- Direct numerical/textual answers that respond to the query
+   and also:
 
-**Classification**:
-- If an answer appears in the MIDDLE of reasoning (followed by more reasoning/verification) → `intermediate_answer`
-- If an answer is the FINAL conclusion with no further reasoning → `final_answer`
+   [Wrong result] --backtracking--> [Approach B]
+   ```
 
-### Step 2: Identify Verification Patterns (`check` node + `check` edge)
+## Section Mapping Requirements
 
-**Verification signals** (create a `check` type node with `check` edge):
-- "let me verify", "let's check", "to confirm"
-- "substituting back", "checking this", "double-check"
+Each node must cover a contiguous section range using:
+- `section_start`
+- `section_end`
 
-**Example of `check` node and edge**:
-```
-[Reasoning] → [Answer: x=5] → [Final confirmation]
-                    ↑
-              [Check: substitute x=5 back]  <-- node type: check
-              (ONLY edge: check edge points TO answer)
-              (NO incoming edges - detached from main flow)
-```
-In this example, the verification node checks the answer node, so the edge direction is: Verification → Answer (type: check)
+These ranges are inclusive and 1-indexed.
 
-### Step 3: Identify Backtracking Patterns (`backtracking` edge)
+Hard constraints:
+- Cover ALL sections from `1` to `{SECTION_COUNT}`
+- NO gaps
+- NO overlap
+- Each section can appear in exactly ONE node
+- Section ranges must be in ascending order
+- Each node should represent one complete logical unit, not a fragmented micro-step
 
-**Backtracking signals** (path switch + `backtracking` edge):
-- "wait", "actually", "on second thought"
-- "let me reconsider", "that doesn't seem right", "I made a mistake"
-- "this approach won't work", "let's try another way"
+## Structural Requirements
 
-**Example of `backtracking` edge**:
-```
-[Problem] ──reasoning──→ [Approach A] ──reasoning──→ [Wrong result]
-    │                                                      │
-    │                                                      │ backtracking
-    │                                                      ↓
-    └─────────────────reasoning───────────────────→ [Approach B] → [Correct answer]
-```
-When Approach A fails, a `backtracking` edge goes FROM the failed result TO the new Approach B.
-The Problem node also extends a `reasoning` edge to Approach B, creating a visual fork.
+- Build a coarse-grained graph, not a line-by-line decomposition
+- Typical traces should usually need around 3-8 nodes, though longer traces may require more
+- Every node must participate in the graph
+- Use `check` only when there is a distinct validation action
+- Use `intermediate_answer` only for explicit candidate answers to the original question
+- Use `backtracking` only for genuine failed-path switching
+- The graph should reflect the high-level reasoning organization, not noisy repetition
 
-### Step 4: Structure the Answer Flow (CRITICAL)
+## Evidence Requirement
 
-**⚠️ MANDATORY**: Every complete reasoning chain MUST end with a `final_answer` node.
+Each node must include:
+- `evidence_quote`: a short verbatim quote from the covered sections supporting the node
 
-**Classification Rules**:
-- First answer occurrence → `intermediate_answer` IF more reasoning/verification follows
-- Verification after answer → separate node with `check` edge pointing TO the answer
-- Backtracking → `backtracking` edge from failed path to new approach  
-- **Final confirmed answer** → `final_answer` node (REQUIRED as the last answer node)
+Keep the quote short and specific.
 
-**How to identify `final_answer`**:
-- Contains explicit conclusion phrases: "final answer", "therefore the answer is", "thus", \\boxed{{...}}
-- Appears at or near the END of the reasoning chain
-- No further reasoning or calculation follows (only restatement or summary may follow)
-- Even if the same numeric value appeared earlier as `intermediate_answer`, the FINAL statement confirming it is `final_answer`
+## Output Format
 
-**Common Mistake**: Do NOT merge the final answer statement into `intermediate_answer`. If there's a clear "final answer" or conclusion statement at the end, create a separate `final_answer` node for it.
+Return ONLY valid JSON using this top-level schema:
 
-## JSON Output Format
-
-```json
 {{
-  "summary": "Brief overview of reasoning approach",
+  "summary": "Brief overview of the reasoning structure",
   "nodes": [
     {{
       "id": "node1",
       "type": "problem_decomposition",
-      "label": "Label (≤8 words)",
-      "description": "What this node accomplishes",
+      "label": "Short label",
+      "description": "What this node does",
       "section_start": 1,
       "section_end": 3,
+      "evidence_quote": "Short supporting quote",
       "metadata": {{}}
     }},
     {{
       "id": "node2",
-      "type": "reasoning_step",
-      "label": "Main approach",
-      "description": "Complete reasoning method",
+      "type": "intermediate_answer",
+      "label": "Candidate answer",
+      "description": "The model states a provisional answer before further reasoning.",
       "section_start": 4,
-      "section_end": 10,
-      "metadata": {{"approach": "method description"}}
+      "section_end": 4,
+      "evidence_quote": "a candidate answer is ...",
+      "metadata": {{"from_node": "node1", "answer_value": "..." }}
     }},
     {{
       "id": "node3",
-      "type": "intermediate_answer",
-      "label": "First answer",
-      "description": "Initial conclusion",
-      "section_start": 11,
-      "section_end": 12,
-      "metadata": {{"from_node": "node2", "result_summary": "result"}}
-    }},
-    {{
-      "id": "node4",
-      "type": "check",
-      "label": "Verify result",
-      "description": "Validation check",
-      "section_start": 13,
-      "section_end": 15,
-      "metadata": {{"validates_node": "node3"}}
-    }},
-    {{
-      "id": "node5",
       "type": "final_answer",
-      "label": "Confirmed answer",
-      "description": "Verified final answer",
-      "section_start": 16,
-      "section_end": 18,
-      "metadata": {{"from_node": "node3", "answer_value": "the answer", "verified_by": "node4"}}
+      "label": "Final answer",
+      "description": "The terminal answer to the question.",
+      "section_start": 5,
+      "section_end": 5,
+      "evidence_quote": "therefore the answer is ...",
+      "metadata": {{"from_node": "node2", "answer_value": "..." }}
     }}
   ],
   "edges": [
-    {{"from": "node1", "to": "node2", "type": "reasoning", "label": "apply"}},
-    {{"from": "node2", "to": "node3", "type": "reasoning", "label": "yields"}},
-    {{"from": "node4", "to": "node3", "type": "check", "label": "verifies"}},
-    {{"from": "node3", "to": "node5", "type": "reasoning", "label": "confirms"}}
+    {{
+      "from": "node1",
+      "to": "node2",
+      "type": "reasoning",
+      "label": "optional short edge label"
+    }}
   ]
 }}
-```
 
-**Note**: `check` edge from node4 points TO node3 (the verified node).
+## Final Checks Before Output
 
-## Pre-Submit Checklist
+- Only the 5 allowed node types are used
+- Only the 3 allowed edge types are used
+- All sections `1..{SECTION_COUNT}` are covered exactly once
+- There is no section overlap and no missing section
+- Every node has a short `evidence_quote`
+- Every `intermediate_answer` has `from_node` and `answer_value`
+- Exactly one `final_answer` exists and it has `from_node` and `answer_value`
+- The graph reflects high-level reasoning structure rather than repetitive surface text
 
-Verify before outputting:
-1. **⚠️ CRITICAL**: NO section overlap - each section number appears in EXACTLY ONE node
-   - Check: For any two nodes, their section ranges must NOT intersect
-   - Example: If node_A ends at section 5, node_B must start at section 6 or later
-2. Sections [1, {SECTION_COUNT}] fully covered, no gaps
-3. Each node = complete logical unit (not fragmented)
-4. All nodes connected (≥1 edge each)
-5. Only 5 node types, only 3 edge types
-6. `check` nodes use `check` edges pointing TO verified node
-7. Required metadata present
-8. Answer expressions identified and properly classified (intermediate vs final)
-9. **⚠️ MANDATORY**: Exactly ONE `final_answer` node exists as the conclusion of the reasoning
-   - If the last sections contain "final answer", "thus the answer is", or \\boxed{{}}, these MUST be `final_answer` type
-   - `final_answer` must have `answer_value` in metadata
+Now analyze the following input:
 
-## Context
+Question:
+{QUESTION}
 
-**Question**: {QUESTION}
-**Total Sections**: {SECTION_COUNT}
+Total Sections:
+{SECTION_COUNT}
 
-**Reasoning**:
+Reasoning:
 {REASONING_WITH_SECTIONS}
-
----
-Output the JSON structure with COARSE-GRAINED segmentation.
 """.strip()
 
 # ============================================================================
@@ -504,234 +482,167 @@ Decide refinement, then output JSON.
 # ============================================================================
 
 LAYER1_SYSTEM_PROMPT_ZH = (
-    "你是一位推理结构分析专家。你的任务是分析思维链推理过程，并将其分解为由节点和边组成的结构化树图。"
-    "推理文本已被预先分割成编号的段落。你必须指定每个节点覆盖哪些段落。"
-    "使用5种节点类型：'problem_decomposition'(问题分解), 'reasoning_step'(推理步骤), 'check'(验证节点), 'intermediate_answer'(中间答案), 'final_answer'(最终答案)。"
-    "仅使用三种边类型：'reasoning'（正常推理流程）、'check'（验证边，指向被验证节点）、"
-    "'backtracking'（失败路径指向替代路径）。"
-    "仅返回有效的JSON，不要包含任何markdown格式或代码块。"
+    "你是一位推理结构标注者。"
+    "你的任务是分析思维链推理过程，并将其转换为一个粗粒度图结构。"
+    "推理文本已经被预先切分成编号段落，你必须为每个节点指定覆盖的段落范围。"
+    "严格使用5种节点类型：'problem_decomposition'(问题分解), 'reasoning_step'(推理步骤), 'check'(验证节点), 'intermediate_answer'(中间答案), 'final_answer'(最终答案)。"
+    "严格使用3种边类型：'reasoning'、'check'、'backtracking'。"
+    "只返回JSON，不要输出markdown、解释或代码块。"
 )
 
 LAYER1_USER_PROMPT_TEMPLATE_ZH = """
-你正在分析一个思维链推理过程。将其分解为一个**粗粒度**的树图，捕捉**高层推理流程**。
+你的目标是阅读已经按段编号的推理文本，识别其高层推理结构，并以 JSON 格式输出一个粗粒度图。重点关注真实的推理组织方式，而不是表面重复或逐句切分。
 
-## 核心原则：宏观层面分析
+输入已经被切分成编号段落，如 `[Section 1]`、`[Section 2]` 等。
 
-每个节点 = 一个完整的逻辑单元（连贯的推理意图）：
-- 完整的问题分解阶段
-- 完整的推理方法（不是单独的步骤）
-- 完整的验证过程
-- 完整的策略改变
+## 节点类型定义
 
-**目标**：典型推理的节点数为3-8个。仅在非常长/复杂的推理链中使用更多节点。
+严格使用以下五种节点类型：
 
-## 段落映射规则
+1. `problem_decomposition`
+   - 对问题的初始理解
+   - 将任务拆成子目标
+   - 建立计划或分析框架
 
-推理文本 = 编号段落 [Section 1], [Section 2] 等。
+2. `reasoning_step`
+   - 一个主要推理动作
+   - 推导、分类讨论、搜索、比较、权衡因素，或其他实质性推进求解的步骤
 
-**关键约束**：
-- 每个节点：`section_start` 到 `section_end`（包含，从1开始）
-- **⚠️ 绝对不能重叠**：每个段落编号只能出现在一个节点中
-  - ❌ 错误：node1=[1,3], node2=[3,5]（段落3出现在两个节点中）
-  - ✅ 正确：node1=[1,3], node2=[4,6]（无重叠）
-- 无间隙：必须连续覆盖所有段落 [1, {SECTION_COUNT}]
-- 每个范围 = 一个完整的逻辑单元
-- 段落必须按升序分配，不能重复使用
+3. `check`
+   - 一个独立的验证动作
+   - 回代检验、验证候选答案、确认前一步是否成立
+   - metadata 必须包含 `validates_node`
 
-## 图元素
+4. `intermediate_answer`
+   - 在推理尚未结束前，针对原问题给出的明确候选答案
+   - 只有当文本明确说出一个针对主问题的暂定答案、候选答案或竞争答案，且后续还会继续验证、比较、修正或替换它时，才使用这个类型
+   - 不要将临时计算、局部打分、阶段性总结、可行性检查或过渡句标成这个类型
+   - metadata 必须包含 `from_node` 和 `answer_value`
 
-### 节点类型（5种）
+5. `final_answer`
+   - 针对原问题的最终具体答案
+   - 这个类型用于最终答案陈述，而不是泛化总结
+   - 必须且只能有一个 `final_answer` 节点
+   - metadata 必须包含 `from_node` 和 `answer_value`
 
-| 类型 | 用途 | 必需的元数据 |
-|------|------|--------------|
-| `problem_decomposition` | 初始问题分析 | - |
-| `reasoning_step` | 主要推理方法 | `approach`（可选） |
-| `check` | 验证/检查结果 | `validates_node`（被验证节点的ID，可以是 reasoning_step/intermediate_answer/final_answer） |
-| `intermediate_answer` | 部分结论/结果 | `from_node` |
-| `final_answer` | 最终结论 | `from_node`, `answer_value` |
+## 边类型定义
 
-### 边类型（仅3种）
+严格使用以下三种边类型：
 
-1. **`reasoning`**（实线 →）：正向流程 A→B
-2. **`check`**（虚线 →）：从验证节点指向被验证节点
-   - **可被验证的节点类型**：`reasoning_step`、`intermediate_answer` 或 `final_answer`
-   - **验证节点只有一条出边**：指向被验证节点的 `check` 边
-   - **验证节点没有入边**：它是一个旁支，不属于主推理流程
-   - 推理流程从被验证的节点继续，而不是从验证节点继续
-3. **`backtracking`**（点线 →）：失败路径指向替代路径
-   - 需要：失败→替代 AND 问题→替代
+1. `reasoning`
+   - 正常的前向推理流程
 
-**每个节点必须通过至少1条边连接（验证节点除外，它只有一条出边的 check 边）。**
+2. `check`
+   - 从验证节点指向被验证节点的验证边
+   - 被验证节点可以是 `reasoning_step`、`intermediate_answer` 或 `final_answer`
 
-## 分段策略：答案驱动方法
+3. `backtracking`
+   - 由于前一路径失败或被放弃而切换到替代路径
+   - 只有当文本明确否定、放弃或认定某条路径失败，然后开启另一条真正替代路径时，才使用这个类型
+   - 不要把简单补充、改写或沿同一路径继续展开标成 `backtracking`
 
-扫描推理链，识别所有直接回答问题的答案表述。
+## 段落映射要求
 
-### 步骤1：识别答案表述
+每个节点都必须包含一个连续的段落范围：
+- `section_start`
+- `section_end`
 
-寻找提供问题答案的短语：
+范围是闭区间，并且从 1 开始编号。
 
-**答案信号**（强节点边界）：
-- "答案是"、"因此"、"所以答案是"、\\boxed{{...}}
-- "我得出结论"、"这给我们"、"综上所述"、"由此可得"
-- "我们得到"、"结果是"、"等于"、"="
-- 直接回答问题的数值/文本答案
+硬约束：
+- 必须覆盖 `1` 到 `{SECTION_COUNT}` 的所有段落
+- 不能有缺口
+- 不能有重叠
+- 每个段落只能属于一个节点
+- 段落范围必须按顺序递增
+- 每个节点应代表一个完整逻辑单元，而不是碎片化的小步骤
 
-**分类**：
-- 如果答案出现在推理的中间（后面还有更多推理/验证）→ `intermediate_answer`
-- 如果答案是最终结论且没有后续推理 → `final_answer`
+## 结构要求
 
-### 步骤2：识别验证模式（`check` 节点 + `check` 边）
+- 构建的是粗粒度图，不是逐句分解
+- 常见推理通常只需要 3-8 个节点，较长推理可以更多
+- 每个节点都必须参与图结构
+- 只有出现明确验证动作时才使用 `check`
+- 只有出现针对原问题的明确候选答案时才使用 `intermediate_answer`
+- 只有出现真正的失败后换路时才使用 `backtracking`
+- 图应反映高层推理组织，而不是重复的表面文本
 
-**验证信号**（创建 `check` 类型节点 + `check` 边）：
-- "让我验证"、"检验一下"、"为了确认"
-- "代入验证"、"核实一下"、"再检查一下"
+## 证据要求
 
-**⚠️ 关键：验证节点连接规则**：
-- **可被验证的节点**：`reasoning_step`、`intermediate_answer` 或 `final_answer`
-- **验证节点只有一条出边**：指向被验证节点的 `check` 边
-- **验证节点没有入边**：它是一个独立的旁支，不在主推理流程上
-- 推理流程从被验证的节点继续，验证节点不参与后续流程
+每个节点都必须包含：
+- `evidence_quote`：来自该节点覆盖段落的简短原文引语，用于支持该节点标注
 
-**`check` 节点和边示例**：
-```
-[推理] → [答案: x=5] → [最终确认]
-              ↑
-        [Check: 将x=5代入检验]  <-- 节点类型: check
-        (唯一的边：check边指向答案)
-        (没有入边 - 独立于主流程)
-```
-在这个例子中：
-- Check节点 → 答案节点（类型：check）✅
-- Check节点 → 最终确认（类型：reasoning）❌ 错误！
-- 答案节点 → 最终确认（类型：reasoning）✅ 正确的流程
+引语要短且具体。
 
-### 步骤3：识别回溯模式（`backtracking` 边）
+## 输出格式
 
-**回溯信号**（路径切换 + `backtracking` 边）：
-- "等等"、"实际上"、"再想一下"
-- "让我重新考虑"、"这似乎不对"、"不对"
-- "这个方法行不通"、"换一种方法试试"
+只返回合法 JSON，顶层结构如下：
 
-**`backtracking` 边示例**：
-```
-[问题] ──reasoning──→ [方法A] ──reasoning──→ [错误结果]
-    │                                              │
-    │                                              │ backtracking
-    │                                              ↓
-    └─────────────────reasoning──────────────────→ [方法B] → [正确答案]
-```
-当方法A失败时，`backtracking` 边从失败的结果指向新的方法B。
-问题节点也延伸一条 `reasoning` 边到方法B，形成视觉上的分叉。
-
-### 步骤4：构建答案流程（关键）
-
-**⚠️ 强制要求**：每个完整的推理链必须以 `final_answer` 节点结尾。
-
-**分类规则**：
-- 首次答案出现 → 如果后面还有推理/验证则为 `intermediate_answer`
-- 答案后的验证 → 单独节点，带 `check` 边指向答案
-- 回溯 → `backtracking` 边从失败路径指向新方法
-- **最终确认的答案** → `final_answer` 节点（必须作为最后的答案节点）
-
-**如何识别 `final_answer`**：
-- 包含明确的结论性短语："最终答案"、"因此答案是"、"综上所述"、\\boxed{{...}}
-- 出现在推理链的末尾或接近末尾
-- 后面没有进一步的推理或计算（只有重述或总结可以跟随）
-- 即使相同的数值之前作为 `intermediate_answer` 出现过，最终确认该答案的陈述也应该是 `final_answer`
-
-**常见错误**：不要将最终答案陈述合并到 `intermediate_answer` 中。如果末尾有明确的"最终答案"或结论性陈述，必须为其创建单独的 `final_answer` 节点。
-
-## JSON输出格式
-
-```json
 {{
-  "summary": "推理方法简述",
+  "summary": "对推理结构的简短概述",
   "nodes": [
     {{
       "id": "node1",
       "type": "problem_decomposition",
-      "label": "标签（≤8字）",
-      "description": "此节点完成的任务",
+      "label": "简短标签",
+      "description": "该节点的作用",
       "section_start": 1,
       "section_end": 3,
+      "evidence_quote": "简短证据引文",
       "metadata": {{}}
     }},
     {{
       "id": "node2",
-      "type": "reasoning_step",
-      "label": "主要方法",
-      "description": "完整的推理方法",
+      "type": "intermediate_answer",
+      "label": "候选答案",
+      "description": "在继续推理前先给出一个暂定答案。",
       "section_start": 4,
-      "section_end": 10,
-      "metadata": {{"approach": "方法描述"}}
+      "section_end": 4,
+      "evidence_quote": "一个候选答案是……",
+      "metadata": {{"from_node": "node1", "answer_value": "..." }}
     }},
     {{
       "id": "node3",
-      "type": "intermediate_answer",
-      "label": "初步答案",
-      "description": "初始结论",
-      "section_start": 11,
-      "section_end": 12,
-      "metadata": {{"from_node": "node2", "result_summary": "结果"}}
-    }},
-    {{
-      "id": "node4",
-      "type": "check",
-      "label": "验证结果",
-      "description": "验证检查",
-      "section_start": 13,
-      "section_end": 15,
-      "metadata": {{"validates_node": "node3"}}
-    }},
-    {{
-      "id": "node5",
       "type": "final_answer",
-      "label": "确认答案",
-      "description": "经验证的最终答案",
-      "section_start": 16,
-      "section_end": 18,
-      "metadata": {{"from_node": "node3", "answer_value": "答案", "verified_by": "node4"}}
+      "label": "最终答案",
+      "description": "对问题的最终回答。",
+      "section_start": 5,
+      "section_end": 5,
+      "evidence_quote": "因此答案是……",
+      "metadata": {{"from_node": "node2", "answer_value": "..." }}
     }}
   ],
   "edges": [
-    {{"from": "node1", "to": "node2", "type": "reasoning", "label": "应用"}},
-    {{"from": "node2", "to": "node3", "type": "reasoning", "label": "得出"}},
-    {{"from": "node4", "to": "node3", "type": "check", "label": "验证"}},
-    {{"from": "node3", "to": "node5", "type": "reasoning", "label": "确认"}}
+    {{
+      "from": "node1",
+      "to": "node2",
+      "type": "reasoning",
+      "label": "可选的简短边标签"
+    }}
   ]
 }}
-```
 
-**注意**：`check` 边从 node4 指向 node3（被验证的节点）。
+## 输出前最终检查
 
-## 提交前检查清单
+- 只使用 5 种允许的节点类型
+- 只使用 3 种允许的边类型
+- 所有 `1..{SECTION_COUNT}` 段落都被且仅被覆盖一次
+- 没有段落重叠，也没有缺失段落
+- 每个节点都有简短的 `evidence_quote`
+- 每个 `intermediate_answer` 都有 `from_node` 和 `answer_value`
+- 必须存在且仅存在一个 `final_answer`，并且它有 `from_node` 和 `answer_value`
+- 图反映的是高层推理结构，而不是重复的表面文本
 
-输出前验证：
-1. **⚠️ 关键**：无段落重叠 - 每个段落编号仅出现在一个节点中
-   - 检查：任意两个节点的段落范围不能相交
-   - 示例：如果 node_A 在段落5结束，node_B 必须从段落6或更后开始
-2. 段落 [1, {SECTION_COUNT}] 完全覆盖，无间隙
-3. 每个节点 = 完整的逻辑单元（不要碎片化）
-4. 所有节点已连接（每个至少1条边）
-5. 仅5种节点类型，仅3种边类型
-6. `check` 节点使用 `check` 边指向被验证节点
-7. 必需的元数据已存在
-8. 答案表述已识别并正确分类（中间答案 vs 最终答案）
-9. **⚠️ 强制要求**：必须存在且仅存在一个 `final_answer` 节点作为推理的结论
-   - 如果最后的段落包含"最终答案"、"因此答案是"或 \\boxed{{}}，这些必须是 `final_answer` 类型
-   - `final_answer` 必须在 metadata 中包含 `answer_value`
+现在分析以下输入：
 
-## 上下文
+问题：
+{QUESTION}
 
-**问题**：{QUESTION}
-**总段落数**：{SECTION_COUNT}
+总段落数：
+{SECTION_COUNT}
 
-**推理过程**：
+推理过程：
 {REASONING_WITH_SECTIONS}
-
----
-输出粗粒度分段的JSON结构。
 """.strip()
 
 # ============================================================================

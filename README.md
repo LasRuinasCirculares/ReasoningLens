@@ -8,8 +8,9 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-green.svg)](https://www.python.org/)
 [![Node.js](https://img.shields.io/badge/node.js-22.10+-green.svg)](https://nodejs.org/)
+[![arXiv](https://img.shields.io/badge/arXiv-2606.23404-b31b1b.svg)](https://arxiv.org/abs/2606.23404)
 
-[Installation](#installation) · [System Overview](#system-overview) · [License](#license)
+[Installation](#installation) · [System Overview](#system-overview) · [Citation](#-citation) · [License](#license)
 
 [**English**](#-reasoninglens) | [**🇨🇳 中文文档**](README_CN.md)
 
@@ -100,16 +101,22 @@ One-off debugging is great, but **systemic patterns** matter more. ReasoningLens
 ```bash
 git clone https://github.com/icip-cas/ReasoningLens.git
 cd ReasoningLens
+```
 
-### **Escape the "CoT Maze": Unmasking Model Reasoning at a Glance**
+#### 2. Backend Setup
 
-![reasoninglens-github](assets/reasoninglens-github.png)
+```bash
+cd backend
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.11+-green.svg)](https://www.python.org/)
-[![Node.js](https://img.shields.io/badge/node.js-22.10+-green.svg)](https://nodejs.org/)
+# Create and activate conda environment
+conda create --name open-webui python=3.11
+conda activate open-webui
 
-[**English**](#-reasoninglens) | [**🇨🇳 中文文档**](README_CN.md)
+# Install dependencies
+pip install -r requirements.txt -U
+
+# Start backend service
+sh dev.sh
 ```
 
 The backend will be running at: `http://localhost:8080`
@@ -267,17 +274,17 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📚 Citation
 
-If you find ReasoningLens useful in your research, please consider citing:
+If you find ReasoningLens useful in your research, please cite the paper:
 
 ```bibtex
-@software{Zhang_ReasoningLens_2026,
-  author = {Zhang, Jun and Zheng, Jiasheng and Lu, Yaojie and Cao, Boxi},
-  license = {MIT},
-  month = feb,
-  title = {{ReasoningLens}},
-  url = {https://github.com/icip-cas/ReasoningLens},
-  version = {0.1.0},
-  year = {2026}
+@misc{zhang2026reasoninglenshierarchicalvisualizationdiagnostic,
+      title={ReasoningLens: Hierarchical Visualization and Diagnostic Auditing for Large Reasoning Models}, 
+      author={Jun Zhang and Jiasheng Zheng and Boxi Cao and Yaojie Lu and Hongyu Lin and Jia Zheng and Xianpei Han and Le Sun},
+      year={2026},
+      eprint={2606.23404},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2606.23404}, 
 }
 ```
 

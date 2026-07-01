@@ -13,9 +13,10 @@ from typing import List, Dict, Tuple
 # Continuation Words Configuration
 # ============================================================================
 
-# Words/phrases that indicate a section is a continuation of the previous one.
-# If a section's first sentence starts with any of these, it should be merged
-# with the previous section.
+# Words/phrases that signal a transition between reasoning strategies (planning unit
+# boundaries). If a section's first sentence starts with any of these, it begins a
+# new atomic planning unit; sections without these markers are merged into the
+# previous planning unit.
 CONTINUATION_WORDS = [
     # Reconsideration / backtracking
     "Another",
@@ -225,7 +226,9 @@ class StreamingReasoningSectionBuilder:
 
         Logic:
         1. First collect all sections split by \\n\\n
-        2. Try merging by continuation words (wait, but, however, etc.)
+        2. Merge consecutive sections that lack a transition word into the previous
+           planning unit; sections starting with transition words (but, wait, etc.)
+           begin a new unit
         3. If merged count > threshold, use merged result
         4. If merged count <= threshold, use raw \\n\\n splits
 
@@ -389,16 +392,17 @@ def _merge_sections_by_continuation_words(sections: List[Dict]) -> List[Dict]:
             # First section, just add it
             merged.append(section.copy())
         elif is_continuation_section(section["text"]):
-            # This section starts with a continuation word, merge with previous
+            # This section starts with a transition word (but, wait, alternatively...),
+            # which signals a new reasoning strategy → start a new planning unit
+            merged.append(section.copy())
+        else:
+            # No transition word → this is a continuation of the current strategy,
+            # merge into the previous planning unit
             prev_section = merged[-1]
-            # Merge with \n\n separator
             prev_section["text"] = (
                 prev_section["text"].strip() + "\n\n" + section["text"].strip()
             )
             prev_section["end_pos"] = section["end_pos"]
-        else:
-            # Regular section, add as new
-            merged.append(section.copy())
 
     return merged
 
