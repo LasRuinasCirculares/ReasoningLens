@@ -8,6 +8,7 @@
 [![Python](https://img.shields.io/badge/python-3.11+-green.svg)](https://www.python.org/)
 [![Node.js](https://img.shields.io/badge/node.js-22.10+-green.svg)](https://nodejs.org/)
 [![arXiv](https://img.shields.io/badge/arXiv-2606.23404-b31b1b.svg)](https://arxiv.org/abs/2606.23404)
+[![Dataset](https://img.shields.io/badge/Dataset-LensBench-yellow.svg)](https://huggingface.co/datasets/LasRuinasCirculares/LensBench)
 
 [安装](#安装) · [系统概览](#系统概览) · [引用](#引用) · [许可证](#许可证)
 
